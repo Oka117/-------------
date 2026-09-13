@@ -130,3 +130,13 @@ python predict.py --data_dir /absolute/path/to/data --model-dir /absolute/path/t
 测试覆盖官方权重示例、单点异常、全对/全错、常量预测、无异常块、跨设备汇总、阈值扫描和事件边界。
 
 下一步优先对 P601B/P310B 的起始漏检与正常误报做分析，再加入少量因果滚动特征。不要根据测试集预测异常比例手工指定标签，也不要直接将绝对时间作为故障捷径。
+
+## EXP-02：概率尺度与阈值迁移
+
+已完成独立 02A/02B，完整结果见 [EXP02_实验结果.md](EXP02_实验结果.md)。两项只复用 baselinev1 的概率和模型，不叠加 EXP-01。02A 的 fold2 开发诊断分数为 66.2045（基线 67.0528）；02B 在历史开发块选择 α=0，保留基线。本次没有生成新的正式提交包。
+
+```bash
+.venv/bin/python experiments/exp02.py --output runs/exp02_threshold_transfer_new
+```
+
+脚本先锁定历史选择再读取 fold2，保存全部预声明候选指标；`predict.py` 自动识别 manifest 中的正常百分位映射。该运行只在三台具备有效早期监督概率的设备上拟合映射，其余保留回退。推理用生成目录的 manifest 和模型，详情与验证命令见实验报告。

@@ -7,6 +7,7 @@ import lightgbm as lgb
 import numpy as np
 import pandas as pd
 from baseline import read_features, probability
+from threshold_transfer import decision_scores
 
 
 def main():
@@ -37,7 +38,8 @@ def main():
         p = probability(model, meta['constant'], df[cols], args.threads)
         if not np.isfinite(p).all():
             raise ValueError(f'{device}: invalid model predictions')
-        result = pd.DataFrame(dict(timestamp=df.timestamp, label=(p >= meta['threshold']).astype(np.int8)))
+        decision = decision_scores(p, meta, Path(args.model_dir))
+        result = pd.DataFrame(dict(timestamp=df.timestamp, label=(decision >= meta['threshold']).astype(np.int8)))
         if args.pump_column:
             result.insert(0, args.pump_column, device)
         path = out/f'{device}_predict.csv'

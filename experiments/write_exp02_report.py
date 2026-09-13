@@ -1,0 +1,82 @@
+"""Render the completed EXP-02 evidence into a Chinese Markdown report."""
+import json
+from pathlib import Path
+
+ROOT=Path(__file__).resolve().parents[1]
+OUT=ROOT/'runs/exp02_threshold_transfer'
+load=lambda name:json.loads((OUT/name).read_text())
+c=load('config.json');r=load('results.json');res=load('resources.json');inf=load('fresh_inference_resources.json')
+base=r['baseline']['aggregate']
+lines=['# EXP-02 实验结果','',
+'日期：2026-09-13。状态：**已运行；02A 本次方案不采用；02B 保留原基线（α=0），没有取得改进。**','',
+'- 固定对照：`runs/baseline_v1/`；父实验：无。未叠加 EXP-01。',
+'- 原始模型、特征、seed=42、评分公式、报警后处理保持不变；训练耗时为 0，直接复用已保存的折外概率及全量基线模型。',
+'- 新增 `experiments/exp02.py`、`threshold_transfer.py`、验证脚本及测试；`predict.py` 支持加载经验分布；打包源码清单增加共享模块。',
+'- 对照数据与模型 SHA256 已核对，原运行未覆盖；版本和源码快照见 `provenance.json`、`source_snapshot/`。',
+'- 最终 fold2 曾用于基线问题定位，本文所有 fold2 成绩都是**开发诊断成绩**，不称为全新独立测试。',
+'- 线上 A 榜：未提交；没有因本实验生成新的正式提交包。','',
+'## 1. 时间边界与可用证据','',
+'沿用原始事件完整的 3 个时间块、原模型及至少 72 点训练隔离。fold0 约为 4–6 月（P106A 为保护事件从 3 月 28 日开始），fold1 为 7–8 月，fold2 为 9 月 1 日至 10 月 4 日。','',
+'**02A：**仅用 fold0 中有效监督模型的折外正常概率拟合各设备右连续经验 CDF，`q(p)=count(reference≤p)/N`；并列值整体处理、不插值。用 fold1 中具有映射且模型有效的设备块，以原 `choose_threshold()` 搜索共享百分位触发值。映射固定后进入 fold2，不用 fold1/fold2 更新映射。P106A 的 fold1 虽无异常，仍以正常样本参与误报权衡。','',
+'**02B：**先用 fold0 单独生成设备/共享阈值，在 fold1 比较 α∈{0,0.5,1}；同分依序优先 0。锁定 α 后，按基线方法用 fold0+fold1 重新求设备/共享阈值，再以固定 α 评估 fold2。资格仍为至少 2 个有效校准异常事件且有正常样本。α=0 保留设备阈值，α=1 使用共享阈值；中间值在 logit 空间插值并裁剪至 [1e-12,1−1e-12]，端点保留精确阈值及全负预测哨兵。','',
+'参数选择结果在读取 fold2 CSV 前写入 `config.json`。其余 α 的 fold2 结果仅作为预声明候选诊断，没有用于重选 α。','',
+'| 设备 | fold0 有效监督模型 | 正常参考点数 | 02A 处理 |','|---|---|---:|---|']
+for d,a in c['mapping_audit'].items():
+ lines.append(f"| {d} | {'是' if a['fold0_model_eligible'] else '否'} | {a['normal_samples']} | {'经验 CDF' if a['mapping_available'] else '保留基线原始概率回退'} |")
+lines+=['',
+'P202A 的 fold1 已有有效概率，但在本次严格的 fold0 映射→fold1 选参协议中不足以构造提前冻结的映射；P310A/P412B 前两折均为单类常数模型。没有把常数输出当作可靠概率映射，也没有为补证据重训模型。为三台设备补充新的合法预测块属于后续工作，本次对这三台的概率尺度假设**证据不足**。','',
+f"共享触发百分位为 **{c['percentile']:.12f}**（约第 {100*c['percentile']:.2f} 百分位）。这不是预设的高尾阈值，而是原评分目标在历史块选择的结果。不同历史模型的尺度变化使低百分位也可能被选中，不能将该值解释为稳定误报率保证。参考集中实际达到该触发值的点数如下（并列值使实际尾部数量与 N×(1−q) 不同）：",'',
+'| 设备 | 正常参考数 | 达到触发值的参考数 |','|---|---:|---:|']
+for d,a in c['mapping_audit'].items():
+ if a['mapping_available']:lines.append(f"| {d} | {a['normal_samples']} | {a['reference_tail_points']} |")
+lines+=['','## 2. 历史参数选择','',
+'| α | fold0 阈值→fold1 总分 | 选择 |','|---|---:|---|']
+for v in c['b_selection']:lines.append(f"| {v['alpha']:g} | {v['aggregate']['score']:.10f} | {'选中' if v['alpha']==c['selected_alpha'] else '未选'} |")
+lines+=['',
+'0 与 0.5 在此开发块同分，因此选 0。fold0 有效事件及设备资格比 fold0+fold1 更少，历史选择信号较弱。`config.json` 的 `b_selection` 保存全部设备、事件和误报段结果。',
+'02A 的 fold1（选参数据）全设备诊断分数为 70.1471，同期只用 fold0 校准阈值的基线为 70.4861；三台无映射设备在这项同期比较中仅使用 fold0 回退阈值，避免偷用 fold1 标签。选参成绩不是泛化证据。','',
+'## 3. fold2 开发诊断结果','',
+'| 方案 | 总分 | 相对基线 | Accuracy | 异常加权召回 |','|---|---:|---:|---:|---:|']
+for name,v in r.items():
+ a=v['aggregate'];lines.append(f"| {name} | {a['score']:.10f} | {a['score']-base['score']:+.6f} | {100*a['accuracy']:.4f}% | {100*a['weighted_recall']:.4f}% |")
+lines+=['','**02A 的召回收益全部来自 P601B 这一段 74 点异常；没有观察到跨事件的召回改善。** P601B 首次报警延迟从 5 小时降至 0，前 3/6 小时召回均升至 100%，但正常误报增加 1,245 点，抵消了收益。P202A 316 点事件仍全部漏检，P310A 仍延迟 4 小时。','',
+'| 设备 | 基线 FP / FN | 02A FP / FN | 基线 / 02A 加权召回 |','|---|---:|---:|---:|']
+for b,a in zip(r['baseline']['devices'],r['exp02a']['devices']):
+ fmt=lambda x:'不可计算' if x is None else f'{x*100:.2f}%'
+ lines.append(f"| {b['device']} | {b['fp']} / {b['fn']} | {a['fp']} / {a['fn']} | {fmt(b['weighted_recall'])} / {fmt(a['weighted_recall'])} |")
+lines+=['',
+'02A 中 P601B 持续至少 18 点（6 小时）的误报点数从 631 增至 2,331；P310B 对应点数从 290 降至 289。误报持续时间按每点覆盖 20 分钟计算。逐段起止时间、长度分布、设备 FPR/普通召回及事件早段召回见各子目录 CSV/JSON。未检出事件的延迟为 null（CSV 留空），不记为 0；无异常块召回为 null。','',
+'02B 的 α=0.5 与 α=1 虽同样检出 P601B 全部异常，也增加大量误报，fold2 总分均低于基线；开发阶段已选定的 α=0 完全保留原预测。','',
+'## 4. 分数尺度与证据边界','',
+'`score_scale_diagnostics.json` 保存各折正常/异常概率的 50/90/99/99.9% 分位数，以及全量模型测试集未标注概率分位数。不同历史模型和时间块确有分布变化，但模型变化与工况变化混杂，不能将变化全归因于模型重训。测试集没有标签，不能估计其正常误报率，也不能证明历史百分位映射能校准全量模型。',
+'未使用全量训练模型在训练集上的拟合概率冒充折外校准证据；未根据测试预测异常比例调参。当前只有一个选参后的完整评估块，不能声称完成多个独立滚动评估块的稳定性验证。三个原始模型时间块之外没有补训新模型，因此不会宣称满足尚不具备的多折泛化证据。','',
+'## 5. 资源与验证','',
+f"- 阈值实验（两个子实验与全部候选合计）：{res['elapsed_seconds']:.3f} 秒；进程峰值 RSS {res['peak_rss_mib']:.2f} MiB；训练 0 秒。此计时复用缓存概率，不包含原基线训练。",
+f"- 新鲜六设备推理：02A {inf['exp02a']['wall_seconds_including_loading_io']:.3f} 秒，02B α=0 {inf['exp02b_alpha_0']['wall_seconds_including_loading_io']:.3f} 秒，包含模型加载与 CSV 读写；推理子进程峰值内存未单独测量。",
+'- 特征数保持基线：P106A/P601B 536 列，其余设备 402 列。',
+'- 12 项单元测试通过：基线评分/事件隔离、经验 CDF 并列值、logit 端点、映射保存加载、分块与因果一致性、未检出事件及短事件诊断。',
+'- 两套方案各六台设备推理通过：模型哈希一致，原始概率与基线缓存一致（容差 1e-12/1e-15），时间戳与行数一致；实际模型推理与离线阈值映射得到相同标签。',
+'- α=0 的全部验证与测试标签与基线一致。旧基线预测文件只有 timestamp/label，两套新预测沿用当前 predict.py 的 pump_id/timestamp/label 格式，比较的是相同时间戳上的标签。',
+'- 验证记录：`verification.json`；原输入哈希在执行后再次确认未改变。','',
+'## 6. 复现与文件','',
+'在项目根目录执行；主实验与 predict.py 均拒绝覆盖非空输出目录。','',
+'```bash',
+'.venv/bin/python -m unittest discover -s tests -v',
+'.venv/bin/python experiments/exp02.py',
+'.venv/bin/python predict.py --model-dir runs/exp02_threshold_transfer/exp02a --output runs/exp02_threshold_transfer/exp02a/predictions --threads 4',
+'.venv/bin/python predict.py --model-dir runs/exp02_threshold_transfer/exp02b_alpha_0 --output runs/exp02_threshold_transfer/exp02b_alpha_0/predictions --threads 4',
+'.venv/bin/python experiments/verify_exp02.py',
+'.venv/bin/python experiments/write_exp02_report.py',
+'```','',
+'主实验支持 `--output` 指定新的目录；验证脚本支持 `--run`。报告生成脚本固定读取本次 canonical 输出目录。推理计时由外层 `time.perf_counter()` 包围同样的 predict.py 子进程命令采集。','',
+'- `config.json`：时间协议、映射可用性、尾部数量、候选选择、各设备阈值。',
+'- `baseline/`、`exp02a/`、`exp02b_alpha_0/`、`exp02b_alpha_0.5/`、`exp02b_alpha_1/`：完整 fold2 概率、标签、设备指标、事件指标及误报段。',
+'- `exp02a/` 和 `exp02b_alpha_0/`：额外保存模型副本、manifest 及新鲜六设备推理；02A 另有正常参考 `.npy`。',
+'- `development/`、`development_diagnostics.json`：fold1 同期对照与选参诊断；不得作为独立评估。',
+'- `provenance.json`、`source_snapshot/`：数据/模型哈希、代码版本/差异和源码。','',
+'## 7. 结论','',
+'本次不替换 baselinev1。02A 在具备映射的设备上未改善总分，且未覆盖最关心的 P202A/P310A/P412B；02B 历史选择回到原方案。这不证明全部概率校准方法无效，只说明本次受控方案没有提供采用依据。后续若继续 02A，应单独记录新的事件完整历史预测块和时间协议；不能用当前 fold2 再调百分位后宣称独立提升。','']
+text='\n'.join(lines)
+(ROOT/'EXP02_实验结果.md').write_text(text)
+(OUT/'实验结果.md').write_text(text)
+print(ROOT/'EXP02_实验结果.md')
