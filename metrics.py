@@ -49,13 +49,27 @@ def aggregate(parts):
                 score=50 * correct / n + 50 * hit / total if n and total else None)
 
 
-def choose_threshold(blocks):
-    """Exact sweep, preserving device/event weights. Ties prefer fewer alarms."""
+def choose_threshold(blocks, *, global_rows=None, global_weight=None):
+    """Exact sweep; optionally optimize a contribution to a shared total score.
+
+    Supply both denominators from the same eligible calibration pool. Omitting
+    both preserves the original block-local objective and fallback behavior.
+    Ties prefer fewer alarms.
+    """
+    shared = global_rows is not None or global_weight is not None
+    if shared:
+        if (global_rows is None or global_weight is None
+                or not np.isfinite(global_rows) or not np.isfinite(global_weight)
+                or global_rows <= 0 or global_weight <= 0):
+            raise ValueError('Supply both finite, positive global denominators')
     if not blocks:
         return 0.5
     y = np.concatenate([b['y'] for b in blocks])
     p = np.concatenate([b['p'] for b in blocks])
     w = np.concatenate([event_weights(b['y']) for b in blocks])
+    if shared and (global_rows < len(y)
+                   or global_weight < w.sum() - 1e-10 * max(1., w.sum())):
+        raise ValueError('Global denominators must include the local blocks')
     if not len(y) or not w.sum() or not (y == 0).any():
         return 0.5
     if not np.isfinite(p).all() or (p < 0).any() or (p > 1).any():
@@ -63,7 +77,9 @@ def choose_threshold(blocks):
     order = np.argsort(-p, kind='stable')
     ps, ys, ws = p[order], y[order], w[order]
     # Starting with all-negative predictions, flip tied probabilities together.
-    delta = 50 * (2 * ys.astype(float) - 1) / len(y) + 50 * ws / w.sum()
+    rows = global_rows if shared else len(y)
+    weight = global_weight if shared else w.sum()
+    delta = 50 * (2 * ys.astype(float) - 1) / rows + 50 * ws / weight
     ends = np.r_[np.flatnonzero(ps[:-1] != ps[1:]), len(ps) - 1]
     gains = np.r_[0., np.cumsum(delta)[ends]]
     thresholds = np.r_[np.nextafter(1., 2.), ps[ends]]

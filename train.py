@@ -19,6 +19,8 @@ def main():
     ap.add_argument('--rounds', type=int, default=300)
     ap.add_argument('--threads', type=int, default=4)
     ap.add_argument('--seed', type=int, default=42)
+    ap.add_argument('--threshold-normalization', choices=['device', 'global'], default='device',
+                    help='device: baseline v1; global: EXP-01 shared calibration denominators')
     ap.add_argument('--gap', type=int, default=72, help='Excluded training points before each validation block')
     ap.add_argument('--fold-starts', nargs=3, default=['2024-04-01', '2024-07-01', '2024-09-01'],
                     metavar='DATE', help='First two blocks calibrate thresholds; third is holdout')
@@ -62,7 +64,18 @@ def main():
     # Holdout labels/probabilities NEVER enter threshold selection or round selection.
     pooled = [b for blocks in all_blocks.values() for b in blocks[:2] if b['eligible']]
     pooled_threshold = choose_threshold(pooled)
+    calibration_rows = sum(len(b['y']) for b in pooled)
+    calibration_weight = float(sum(event_weights(b['y']).sum() for b in pooled))
+    normalization = dict(mode=args.threshold_normalization,
+                         global_rows=calibration_rows, global_weight=calibration_weight,
+                         scope='eligible supervised calibration blocks only (folds 0 and 1)')
+    manifest['threshold_normalization'] = normalization
+    # Only devices with sufficient calibration events use these denominators.
+    # The pooled threshold and all fallback paths retain baseline behavior.
+    threshold_kwargs = (dict(global_rows=calibration_rows, global_weight=calibration_weight)
+                        if args.threshold_normalization == 'global' else {})
     report = dict(folds=fold_report, pooled_threshold=pooled_threshold, devices={},
+                  threshold_normalization=normalization,
                   notes=['Formula reproduced from competition page; no official scoring script supplied.',
                          'Holdout starts at the third fold boundary; no early stopping or threshold tuning on holdout.',
                          'No-positive block score is null; aggregate sums device-local weights.',
@@ -72,7 +85,7 @@ def main():
         calibration = [b for b in blocks[:2] if b['eligible']]
         events = sum(int((np.diff(np.r_[0, b['y'], 0]) == 1).sum()) for b in calibration)
         enough = events >= 2 and any((b['y'] == 0).any() for b in calibration)
-        threshold = choose_threshold(calibration) if enough else pooled_threshold
+        threshold = choose_threshold(calibration, **threshold_kwargs) if enough else pooled_threshold
         source = 'device_calibration' if enough else 'pooled_calibration' if any(b['y'].sum() for b in pooled) else 'default_0.5_no_calibration_positives'
         scores = []
         for b in blocks:

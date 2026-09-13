@@ -34,6 +34,53 @@ class MetricsTests(unittest.TestCase):
         self.assertEqual(event_safe_boundary([0,1,1,1,0],3),1)
         self.assertEqual(event_safe_boundary([0,1,1,1,0],4),4)
 
+    def test_global_threshold_optimizes_aggregate_not_device_score(self):
+        local = dict(y=np.array([0, 0, 0, 1]), p=np.array([.9, .8, .7, .1]))
+        other_y = np.ones(100, dtype=np.int8)
+        other = score(other_y, other_y)
+        rows = len(local['y']) + len(other_y)
+        weight = event_weights(local['y']).sum() + event_weights(other_y).sum()
+        old = choose_threshold([local])
+        new = choose_threshold([local], global_rows=rows, global_weight=weight)
+        def value(t):
+            return aggregate([score(local['y'], local['p'] >= t), other])['score']
+        candidates = [np.nextafter(1., 2.), .9, .8, .7, .1]
+        self.assertEqual(old, .1)
+        self.assertEqual(new, candidates[0])
+        self.assertGreater(value(new), value(old))
+        self.assertAlmostEqual(value(new), max(map(value, candidates)))
+
+    def test_global_threshold_randomized_brute_force(self):
+        rng = np.random.default_rng(42)
+        for _ in range(50):
+            blocks = [dict(y=np.r_[0, 1, rng.integers(0, 2, size=8)],
+                           p=rng.integers(0, 6, size=10) / 5) for _ in range(2)]
+            other_y = np.r_[0, 1, rng.integers(0, 2, size=28)]
+            other = score(other_y, rng.integers(0, 2, size=30))
+            rows = sum(len(b['y']) for b in blocks) + len(other_y)
+            weight = sum(event_weights(b['y']).sum() for b in blocks) + event_weights(other_y).sum()
+            t = choose_threshold(blocks, global_rows=rows, global_weight=weight)
+            def value(t):
+                return aggregate([score(b['y'], b['p'] >= t) for b in blocks] + [other])['score']
+            candidates = np.r_[np.nextafter(1., 2.), np.unique(np.concatenate([b['p'] for b in blocks]))]
+            self.assertAlmostEqual(value(t), max(map(value, candidates)))
+
+    def test_global_denominators_validation_and_legacy_equivalence(self):
+        b = dict(y=np.array([0, 1]), p=np.array([.6, .2]))
+        self.assertEqual(choose_threshold([b]),
+                         choose_threshold([b], global_rows=2, global_weight=7))
+        for kwargs in [dict(global_rows=2), dict(global_weight=7),
+                       dict(global_rows=0, global_weight=7),
+                       dict(global_rows=2, global_weight=np.nan),
+                       dict(global_rows=np.inf, global_weight=7),
+                       dict(global_rows=1, global_weight=7),
+                       dict(global_rows=2, global_weight=6)]:
+            with self.subTest(kwargs=kwargs), self.assertRaises(ValueError):
+                choose_threshold([b], **kwargs)
+        self.assertEqual(choose_threshold([], global_rows=2, global_weight=7), .5)
+        normal = dict(y=np.array([0, 0]), p=np.array([.6, .2]))
+        self.assertEqual(choose_threshold([normal], global_rows=4, global_weight=7), .5)
+
     def test_invalid_labels(self):
         with self.assertRaises(ValueError):
             score([0,2],[0,1])

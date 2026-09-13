@@ -123,6 +123,21 @@ python predict.py --data_dir /absolute/path/to/data --model-dir /absolute/path/t
 
 ## 测试与后续实验
 
+### EXP-01：共享整体分母的设备阈值
+
+默认 `--threshold-normalization device` 保留 baseline v1 的阈值选择。使用 `global` 运行独立实验：
+
+```bash
+.venv/bin/python train.py --output runs/exp01_global_threshold --threshold-normalization global --threads 4 --rounds 300
+.venv/bin/python predict.py --model-dir runs/exp01_global_threshold --output runs/exp01_global_threshold/predictions --zip
+```
+
+若目录已存在且非空，请选择新的输出目录。设备阈值扫描使用所有有效监督校准块（fold0/1）的总样本数 N 和异常总权重 W，增益为 `50*(2*y-1)/N + 50*w/W`。不纳入单类常量模型块或 fold2。模型训练、设备至少两个校准事件的资格条件、共享阈值及其回退策略均保持原样。
+
+`metrics.json` 与最终 `manifest.json` 的 `threshold_normalization` 记录模式、分母和数据范围，启动配置记录所选模式。预测直接使用保存的阈值，无需修改预测逻辑。本实验与当前本地 `aggregate()` 公式对齐，不能替代官方跨设备评分口径的确认。
+
+### 自动测试
+
 ```bash
 .venv/bin/python -m unittest discover -s tests -v
 ```
