@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 import numpy as np
 import pandas as pd
-from metrics import binary
+from metrics import binary, event_weights
 
 
 def read_features(path):
@@ -51,15 +51,37 @@ def temporal_folds(df, y, starts, gap):
         yield i, fit_end, start, end
 
 
-def fit_model(x, y, rounds, threads, seed):
+def training_weights(y, mode='none', positive_weight=2.0):
+    """Training-prefix labels only; singleton events have weight c in both modes."""
+    y = binary(y)
+    if mode not in ('none', 'class', 'event') or not np.isfinite(positive_weight) or positive_weight <= 0:
+        raise ValueError('Invalid training weight configuration')
+    if mode == 'none':
+        return None
+    w = np.ones(len(y), dtype=float)
+    w[y == 1] = positive_weight
+    if mode == 'event':
+        ew = event_weights(y)
+        edges = np.diff(np.r_[0, y, 0])
+        for start, end in zip(np.flatnonzero(edges == 1), np.flatnonzero(edges == -1)):
+            if end - start > 1:
+                w[start:end] = positive_weight * ew[start:end] / 4.0
+    return w
+
+
+def fit_model(x, y, rounds, threads, seed, sample_weight=None):
     import lightgbm as lgb
+    if sample_weight is not None:
+        sample_weight = np.asarray(sample_weight, dtype=float)
+        if sample_weight.shape != np.asarray(y).shape or not np.isfinite(sample_weight).all() or (sample_weight <= 0).any():
+            raise ValueError('Expected finite positive sample weights aligned with labels')
     if np.unique(y).size < 2:
         return None, float(y[0])
     params = dict(objective='binary', metric='binary_logloss', learning_rate=0.05,
                   num_leaves=15, min_data_in_leaf=100, lambda_l2=5.0,
                   feature_fraction=0.9, max_bin=127, verbosity=-1,
                   num_threads=threads, seed=seed, deterministic=True, force_col_wise=True)
-    model = lgb.train(params, lgb.Dataset(x, label=y), num_boost_round=rounds)
+    model = lgb.train(params, lgb.Dataset(x, label=y, weight=sample_weight), num_boost_round=rounds)
     return model, None
 
 

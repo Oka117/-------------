@@ -130,3 +130,20 @@ python predict.py --data_dir /absolute/path/to/data --model-dir /absolute/path/t
 测试覆盖官方权重示例、单点异常、全对/全错、常量预测、无异常块、跨设备汇总、阈值扫描和事件边界。
 
 下一步优先对 P601B/P310B 的起始漏检与正常误报做分析，再加入少量因果滚动特征。不要根据测试集预测异常比例手工指定标签，也不要直接将绝对时间作为故障捷径。
+
+## EXP-04：训练样本权重
+
+保持原始特征、300 轮、seed=42 及基线阈值算法，独立比较普通类别权重与事件前端权重。例如：
+
+```bash
+.venv/bin/python train.py --output runs/exp04a_class_weight/c2 --training-weight class --positive-weight 2 --threads 4 --rounds 300
+.venv/bin/python train.py --output runs/exp04b_event_weight/c2 --training-weight event --positive-weight 2 --threads 4 --rounds 300
+```
+
+`--training-weight none` 为默认基线；`class` 对异常赋权 c；`event` 对多点异常赋权 `c × event_weight / 4`，单点异常赋权 c。权重仅由相应训练前缀标签计算，正常点始终为 1。验证评分权重保持原样。全量重训使用同一规则，预测接口无需改动。
+
+首次复现四个主配置可运行 `.venv/bin/python experiments/run_exp04.py`，它依次运行无权重对照和四个加权配置，先以 fold0 校准、fold1 选择 A/B 各自的 c，再报告已参与开发的 fold2。随后执行 `.venv/bin/python experiments/predict_exp04.py` 测量推理开销并检查六设备输出。已有非空实验目录会拒绝覆盖，复现前应在新工作目录准备源码和数据。
+
+结果见 `EXP04_实验结果.md`，逐设备、逐事件及误报段输出在 `runs/exp04_analysis/`。
+
+加 `--confirm` 可同时复现已冻结的 EXP-04B c=2 与无权重基线在 seed=43/44 的比较；它用于稳定性复核，不重新挑选 c。新工作目录需保留固定对照 `runs/baseline_v1/`，实验脚本会创建协议及基线校验和。

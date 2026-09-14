@@ -7,7 +7,7 @@ from pathlib import Path
 import lightgbm as lgb
 import numpy as np
 import pandas as pd
-from baseline import read_train, temporal_folds, fit_model, probability, write_json, sha256
+from baseline import read_train, temporal_folds, fit_model, probability, write_json, sha256, training_weights
 from metrics import aggregate, choose_threshold, event_weights, score
 
 
@@ -19,10 +19,14 @@ def main():
     ap.add_argument('--rounds', type=int, default=300)
     ap.add_argument('--threads', type=int, default=4)
     ap.add_argument('--seed', type=int, default=42)
+    ap.add_argument('--training-weight', choices=['none', 'class', 'event'], default='none')
+    ap.add_argument('--positive-weight', type=float, default=2.0)
     ap.add_argument('--gap', type=int, default=72, help='Excluded training points before each validation block')
     ap.add_argument('--fold-starts', nargs=3, default=['2024-04-01', '2024-07-01', '2024-09-01'],
                     metavar='DATE', help='First two blocks calibrate thresholds; third is holdout')
     args = ap.parse_args()
+    if not np.isfinite(args.positive_weight) or args.positive_weight <= 0:
+        ap.error('positive-weight must be finite and positive')
     if args.rounds < 1 or args.threads < 1 or args.gap < 0:
         ap.error('rounds/threads must be positive; gap must be nonnegative')
     out = Path(args.output)
@@ -45,7 +49,8 @@ def main():
         blocks = []
         for i, fit_end, start, end in temporal_folds(df, y, args.fold_starts, args.gap):
             t0 = time.perf_counter()
-            model, constant = fit_model(x.iloc[:fit_end], y[:fit_end], args.rounds, args.threads, args.seed)
+            weights = training_weights(y[:fit_end], args.training_weight, args.positive_weight)
+            model, constant = fit_model(x.iloc[:fit_end], y[:fit_end], args.rounds, args.threads, args.seed, sample_weight=weights)
             p = probability(model, constant, x.iloc[start:end], args.threads)
             b = dict(y=y[start:end], p=p, eligible=model is not None, fold=i,
                      timestamp=df.timestamp.iloc[start:end].to_numpy())
@@ -88,7 +93,8 @@ def main():
         # Refit on all labeled history only after threshold and holdout evaluation.
         t0 = time.perf_counter()
         df, cols, y = read_train(args.data_dir, device)
-        model, constant = fit_model(df[cols], y, args.rounds, args.threads, args.seed)
+        weights = training_weights(y, args.training_weight, args.positive_weight)
+        model, constant = fit_model(df[cols], y, args.rounds, args.threads, args.seed, sample_weight=weights)
         model_path = f'models/{device}.txt'
         if model is not None:
             model.save_model(str(out/model_path))
