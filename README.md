@@ -130,3 +130,22 @@ python predict.py --data_dir /absolute/path/to/data --model-dir /absolute/path/t
 测试覆盖官方权重示例、单点异常、全对/全错、常量预测、无异常块、跨设备汇总、阈值扫描和事件边界。
 
 下一步优先对 P601B/P310B 的起始漏检与正常误报做分析，再加入少量因果滚动特征。不要根据测试集预测异常比例手工指定标签，也不要直接将绝对时间作为故障捷径。
+
+## EXP-03：独立因果时序特征
+
+`train.py --feature-kind` 支持 `mean_deviation`（03A）、`lag_difference`（03B）、`history_std`（03C）、`standardized_deviation`（03D）；默认 `raw` 保留基线。四组均保留原始特征，在每个训练折内部用原始模型的 gain 选前 30 列，最终全量模型重新选择，不叠加 EXP-01/02。
+
+```bash
+.venv/bin/python experiments/run_exp03.py
+.venv/bin/python experiments/analyze_exp03.py
+.venv/bin/python experiments/confirm_exp03.py
+```
+
+已有非空输出目录不会覆盖。单独重跑示例：
+
+```bash
+.venv/bin/python train.py --feature-kind mean_deviation --output runs/exp03a_new --threads 4 --rounds 300 --seed 42
+.venv/bin/python predict.py --model-dir runs/exp03a_new --output runs/exp03a_new/predictions --threads 4
+```
+
+推理自动使用 manifest 中的特征配方和保存的 72 点训练历史；跨时间缺口时重置历史。标准差逐窗口计算，避免增量滚动方差对历史长度的数值依赖。完整结果、历史选择与配对种子复核见 [EXP03_实验结果.md](EXP03_实验结果.md)。

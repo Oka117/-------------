@@ -7,6 +7,7 @@ import lightgbm as lgb
 import numpy as np
 import pandas as pd
 from baseline import read_features, probability
+from temporal_features import inference_features
 
 
 def main():
@@ -29,12 +30,18 @@ def main():
     for device in manifest['devices']:
         meta = manifest['models'][device]
         df, cols = read_features(Path(args.data_dir)/device/f'{device}_test.csv')
-        if cols != meta['features']:
+        if cols != meta.get('raw_features',meta['features']):
             raise ValueError(f'{device}: test feature schema differs from training')
         if pd.Timestamp(df.timestamp.iloc[0]) <= pd.Timestamp(meta['train_end']):
             raise ValueError(f'{device}: test overlaps training history')
         model = lgb.Booster(model_file=str(Path(args.model_dir)/meta['path'])) if meta['path'] else None
-        p = probability(model, meta['constant'], df[cols], args.threads)
+        x = df[cols]
+        if meta.get('feature_recipe'):
+            context, _ = read_features(Path(args.model_dir)/meta['history_path'])
+            x = inference_features(df, context, meta['feature_recipe'])
+        if list(x.columns) != meta['features']:
+            raise ValueError(f'{device}: engineered feature schema differs')
+        p = probability(model, meta['constant'], x, args.threads)
         if not np.isfinite(p).all():
             raise ValueError(f'{device}: invalid model predictions')
         result = pd.DataFrame(dict(timestamp=df.timestamp, label=(p >= meta['threshold']).astype(np.int8)))

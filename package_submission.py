@@ -12,12 +12,14 @@ def main():
     if set(manifest['devices']) != expected:
         raise ValueError('The submission must contain all six devices')
     files = [root / name for name in ['predict.py', 'train.py', 'baseline.py', 'metrics.py',
-                                     'package_submission.py', 'README.md', 'requirements.txt']]
+                                     'temporal_features.py', 'package_submission.py', 'README.md', 'requirements.txt']]
     files += [run / 'manifest.json', run / 'config.json']
     for device in sorted(expected):
         model = manifest['models'][device]['path']
         if model:
             files.append(run / model)
+        if manifest['models'][device].get('history_path'):
+            files.append(run / manifest['models'][device]['history_path'])
     if not all(p.is_file() for p in files):
         raise FileNotFoundError('A required source or model file is missing')
     output = run / 'submission/submission_code.zip'
