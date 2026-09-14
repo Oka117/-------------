@@ -51,12 +51,12 @@ def temporal_folds(df, y, starts, gap):
         yield i, fit_end, start, end
 
 
-def fit_model(x, y, rounds, threads, seed):
+def fit_model(x, y, rounds, threads, seed, min_data_in_leaf=100, num_leaves=15):
     import lightgbm as lgb
     if np.unique(y).size < 2:
         return None, float(y[0])
     params = dict(objective='binary', metric='binary_logloss', learning_rate=0.05,
-                  num_leaves=15, min_data_in_leaf=100, lambda_l2=5.0,
+                  num_leaves=num_leaves, min_data_in_leaf=min_data_in_leaf, lambda_l2=5.0,
                   feature_fraction=0.9, max_bin=127, verbosity=-1,
                   num_threads=threads, seed=seed, deterministic=True, force_col_wise=True)
     model = lgb.train(params, lgb.Dataset(x, label=y), num_boost_round=rounds)

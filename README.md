@@ -130,3 +130,19 @@ python predict.py --data_dir /absolute/path/to/data --model-dir /absolute/path/t
 测试覆盖官方权重示例、单点异常、全对/全错、常量预测、无异常块、跨设备汇总、阈值扫描和事件边界。
 
 下一步优先对 P601B/P310B 的起始漏检与正常误报做分析，再加入少量因果滚动特征。不要根据测试集预测异常比例手工指定标签，也不要直接将绝对时间作为故障捷径。
+
+## EXP05：单因素容量实验
+
+`train.py` 支持 `--min-data-in-leaf`（默认 100）、`--num-leaves`（默认 15）和 `--rounds`（默认 300）。默认训练行为保持 baselinev1；每折历史模型另存为 `models/<设备>_fold<编号>.txt`，用于复核历史训练与校准资格。
+
+```bash
+# 单独改变叶节点最少样本数；其他参数保持默认值
+.venv/bin/python train.py --min-data-in-leaf 20 --output runs/new_leaf20
+
+# 执行计划中的三个独立参数组，包含重训对照、早期选择及候选种子确认
+.venv/bin/python experiments/exp05.py
+# 实验完成后执行六设备推理检查并生成报告
+.venv/bin/python experiments/exp05_report.py
+```
+
+实验脚本固定使用 `runs/exp05_*`，已有输出时拒绝覆盖。参数选择只用 fold0 校准后的 fold1 成绩；fold2 是已用于开发的后续诊断块。完整结果见 `EXP05_实验结果.md`，原始概率、事件和误报段指标在 `runs/exp05_analysis/`。
