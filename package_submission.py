@@ -11,7 +11,7 @@ def main():
     expected = {'P106A', 'P202A', 'P310A', 'P310B', 'P412B', 'P601B'}
     if set(manifest['devices']) != expected:
         raise ValueError('The submission must contain all six devices')
-    files = [root / name for name in ['predict.py', 'train.py', 'baseline.py', 'metrics.py',
+    files = [root / name for name in ['predict.py', 'train.py', 'baseline.py', 'metrics.py', 'normal_model.py', 'experiments/exp06.py',
                                      'package_submission.py', 'README.md', 'requirements.txt']]
     files += [run / 'manifest.json', run / 'config.json']
     for device in sorted(expected):

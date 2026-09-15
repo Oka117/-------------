@@ -5,6 +5,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from metrics import binary
+from normal_model import fit_normal_model, normal_error
 
 
 def read_features(path):

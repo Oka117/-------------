@@ -12,6 +12,11 @@ from metrics import aggregate, choose_threshold, event_weights, score
 
 
 def main():
+    # Explicit experiment entrypoint, keeping the baseline defaults intact.
+    import sys
+    if '--experiment' in sys.argv:
+        from experiments.exp06 import main as experiment_main
+        return experiment_main()
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument('--data-dir', '--data_dir', default='data')
     ap.add_argument('--output', default='runs/baseline_v1')

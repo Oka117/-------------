@@ -1,6 +1,6 @@
 # 泵设备异常预警 baseline v1
 
-分设备 LightGBM 二分类，输入为当前时刻的原始 `feature_*`。CPU 训练，默认 4 线程；不使用时间戳作为特征，不使用测试数据拟合模型或选择阈值。各设备动态读取 402/536 列，无需人工补列。此版本尚未加入滚动统计、异常检测模型或集成。
+默认流程为分设备 LightGBM 二分类，输入为当前时刻的原始 `feature_*`。CPU 训练，默认 4 线程；不使用时间戳作为特征，不使用测试数据拟合模型或选择阈值。各设备动态读取 402/536 列，无需人工补列。EXP06 正常模型及融合通过独立入口运行，默认基线不变。
 
 ## 快速开始
 
@@ -122,6 +122,21 @@ python predict.py --data_dir /absolute/path/to/data --model-dir /absolute/path/t
 推理严格保留测试时间戳和原始行顺序，检查特征名与顺序、有限数值及训练/测试时间重叠。当前数据无缺失，因此发现异常输入时会直接报错，不悄悄填充或删行。
 
 ## 测试与后续实验
+
+### EXP06 正常状态模型
+
+完整结果见 [EXP06_实验结果.md](EXP06_实验结果.md)。A 为正常训练样本上的稳健缩放与 PCA 重构误差，B 为历史正常分数经验分布映射后的融合。两者未通过较早时间块筛选，因此继续保留 baselinev1。
+
+```bash
+.venv/bin/python train.py --experiment exp06 --output runs/exp06_new
+.venv/bin/python predict.py --model-dir runs/exp06_new/a --output runs/exp06_new/a/predictions
+# B 的目录权重以 selection.json 的 alpha 为准；本次为 0.25。
+.venv/bin/python predict.py --model-dir runs/exp06_new/b/alpha0.25 --output runs/exp06_new/b/alpha0.25/predictions
+.venv/bin/python predict.py --model-dir runs/baseline_v1 --output runs/exp06_new/baseline_predictions
+.venv/bin/python experiments/verify_exp06.py runs/exp06_new
+```
+
+每次使用新目录；保存折内 PCA、全量模型、历史映射、原始折外分数、逐事件与误报段指标、数据哈希和源码快照。PCA 采用 NumPy 确定性特征分解，无新增依赖；融合复用经哈希及时间戳核对的 baselinev1 折外概率与最终模型。输出分数不是经过概率校准的故障概率。
 
 ```bash
 .venv/bin/python -m unittest discover -s tests -v

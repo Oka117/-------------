@@ -7,6 +7,7 @@ import lightgbm as lgb
 import numpy as np
 import pandas as pd
 from baseline import read_features, probability
+from normal_model import normal_error, bounded_error, fusion_score
 
 
 def main():
@@ -33,8 +34,18 @@ def main():
             raise ValueError(f'{device}: test feature schema differs from training')
         if pd.Timestamp(df.timestamp.iloc[0]) <= pd.Timestamp(meta['train_end']):
             raise ValueError(f'{device}: test overlaps training history')
-        model = lgb.Booster(model_file=str(Path(args.model_dir)/meta['path'])) if meta['path'] else None
-        p = probability(model, meta['constant'], df[cols], args.threads)
+        if meta.get('kind') in ('normal_pca', 'score_fusion'):
+            with np.load(Path(args.model_dir)/meta['normal_path'], allow_pickle=False) as state:
+                error = normal_error(state, df[cols])
+            p = bounded_error(error)
+            if meta['kind'] == 'score_fusion':
+                model = lgb.Booster(model_file=str(Path(args.model_dir)/meta['path'])) if meta['path'] else None
+                supervised = probability(model, meta['constant'], df[cols], args.threads)
+                with np.load(Path(args.model_dir)/meta['mapping_path'], allow_pickle=False) as maps:
+                    p = fusion_score(error, supervised, maps, meta['alpha'])
+        else:
+            model = lgb.Booster(model_file=str(Path(args.model_dir)/meta['path'])) if meta['path'] else None
+            p = probability(model, meta['constant'], df[cols], args.threads)
         if not np.isfinite(p).all():
             raise ValueError(f'{device}: invalid model predictions')
         result = pd.DataFrame(dict(timestamp=df.timestamp, label=(p >= meta['threshold']).astype(np.int8)))
