@@ -130,3 +130,9 @@ python predict.py --data_dir /absolute/path/to/data --model-dir /absolute/path/t
 测试覆盖官方权重示例、单点异常、全对/全错、常量预测、无异常块、跨设备汇总、阈值扫描和事件边界。
 
 下一步优先对 P601B/P310B 的起始漏检与正常误报做分析，再加入少量因果滚动特征。不要根据测试集预测异常比例手工指定标签，也不要直接将绝对时间作为故障捷径。
+
+## EXP08 准入审计
+
+已核对 EXP01–EXP07 最终分支结果，并补做 EXP01 的 fold0→fold1 阈值验证。当前缺少两项通过独立验证的有效改动，组合训练及移除消融暂不满足计划前提，保留 baselinev1。详见 [EXP08 实验结果](EXP08_实验结果.md)。
+
+复核入口：`.venv/bin/python experiments/exp08.py --output runs/exp08_new_audit`。需要原始数据、七个本地实验分支及已有 baselinev1/EXP01 运行资产；使用新的输出目录。
