@@ -1,5 +1,6 @@
 """Train per-device baselines with calibration folds and a held-out final block."""
 import argparse
+import sys
 import platform
 import resource
 import time
@@ -12,6 +13,10 @@ from metrics import aggregate, choose_threshold, event_weights, score
 
 
 def main():
+    if '--experiment' in sys.argv:
+        from experiments.exp07 import main as experiment_main
+        experiment_main()
+        return
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument('--data-dir', '--data_dir', default='data')
     ap.add_argument('--output', default='runs/baseline_v1')

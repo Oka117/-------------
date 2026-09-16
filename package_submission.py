@@ -12,7 +12,7 @@ def main():
     if set(manifest['devices']) != expected:
         raise ValueError('The submission must contain all six devices')
     files = [root / name for name in ['predict.py', 'train.py', 'baseline.py', 'metrics.py',
-                                     'package_submission.py', 'README.md', 'requirements.txt']]
+                                     'postprocessing.py', 'experiments/exp07.py', 'package_submission.py', 'README.md', 'requirements.txt']]
     files += [run / 'manifest.json', run / 'config.json']
     for device in sorted(expected):
         model = manifest['models'][device]['path']

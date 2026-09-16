@@ -130,3 +130,16 @@ python predict.py --data_dir /absolute/path/to/data --model-dir /absolute/path/t
 测试覆盖官方权重示例、单点异常、全对/全错、常量预测、无异常块、跨设备汇总、阈值扫描和事件边界。
 
 下一步优先对 P601B/P310B 的起始漏检与正常误报做分析，再加入少量因果滚动特征。不要根据测试集预测异常比例手工指定标签，也不要直接将绝对时间作为故障捷径。
+
+
+## EXP07：因果报警后处理
+
+运行独立实验，不重新训练或修改 baselinev1：
+
+```bash
+.venv/bin/python train.py --experiment exp07 --output runs/exp07
+```
+
+滞回阈值与 2/3 点因果均值分别比较。fold0 校准后在 fold1 选择候选，fold2 仅作已见开发诊断。每个块和测试流冷启动，流式调用 `postprocess_probabilities` 时应传递返回状态；切换模型或时间不连续时重置。批量推理要求连续 20 分钟数据。
+
+结果见 [EXP07 实验结果](EXP07_实验结果.md)。详细指标、模型副本与测试输出保存在 `runs/exp07/`；使用 `predict.py --model-dir runs/exp07/b_window_2 --output <新目录>` 可复现候选推理。默认推理和提交包仍使用 baselinev1。
