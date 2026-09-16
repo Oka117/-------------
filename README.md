@@ -136,3 +136,11 @@ python predict.py --data_dir /absolute/path/to/data --model-dir /absolute/path/t
 已核对 EXP01–EXP07 最终分支结果，并补做 EXP01 的 fold0→fold1 阈值验证。当前缺少两项通过独立验证的有效改动，组合训练及移除消融暂不满足计划前提，保留 baselinev1。详见 [EXP08 实验结果](EXP08_实验结果.md)。
 
 复核入口：`.venv/bin/python experiments/exp08.py --output runs/exp08_new_audit`。需要原始数据、七个本地实验分支及已有 baselinev1/EXP01 运行资产；使用新的输出目录。
+
+## EXP09 月度滚动验证
+
+已按《下一轮实验计划_EXP09–EXP11.md》完成 4–9 月、六设备共 36 个事件完整的滚动任务。每任务在校准前训练，同一模型预测校准与未来评估；共享阈值池按最早评估时间截断。保留 baselinev1，未执行 EXP10/EXP11。详见 [EXP09 实验结果](EXP09_实验结果.md)。
+
+训练缓存入口：`.venv/bin/python experiments/exp09.py --output runs/exp09_new_run`。
+重载及 137 点分块验收：`.venv/bin/python experiments/verify_exp09.py --run runs/exp09_new_run`。
+输出目录必须为空；现有结果位于 `runs/exp09_forward_protocol/`，包括协议、模型/常数状态、概率、事件诊断、资源与哈希。历史数据已查看，所有分数仅作开发诊断。
